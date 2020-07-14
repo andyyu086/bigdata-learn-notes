@@ -80,8 +80,9 @@ spark.dynamicAllocation.enabled | | 是否开启动态资源分配
 maximizeResourceAllocation || 基于集群的可用计算和内存资源最大化设置分配
 
 - 启用maximizeResourceAllocation会自动配置的设置有：
-<div style="width:165px">设置</div>| 描述 | 值
-----|---|---
+
+设置 | 描述 | 值
+--- | --- | ---
 spark.default.parallelism | 在用户未设置的情况下由Transform算子 (如联接、reduceByKey 和并行化) 返回的RDD中的分区数 | 对YARN容器可用的CPU内核数的2倍
 spark.driver.memory | 要用于Driver进程（即初始化 SparkContext）的内存量 | 基于集群中的实例类型配置设置。但是，由于 Spark 驱动程序可在主实例或某个核心实例 (例如，分别在 YARN 客户端和集群模式中) 上运行，因此将根据这两个实例组中的实例类型的较小者进行设置
 spark.executor.memory | 每个执行者进程要使用的内存量 | 基于集群中的核心和任务实例类型配置设置
