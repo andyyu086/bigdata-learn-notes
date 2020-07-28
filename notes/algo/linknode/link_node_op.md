@@ -1,28 +1,11 @@
-# 1. 基础数据类型
-## 1.1 String类型
-```java
-        //赋值，长度，分割等操作
-        String s2 = "billformac";
-        int length = s2.length();
-        s2.substring(4,8);
-
-        //转换为sb，修改和转换等操作
-        StringBuilder sb = new StringBuilder(s2.substring(4,8));
-        sb.append("bill");
-        String sbNew = sb.toString();
-
-        //转换为char array，获取char和index操作
-        char[] chars = sbNew.toCharArray();
-        char c = s2.charAt(4);
-        int r = s2.indexOf('r');
-```
-## 1.2 线性表
+# 1. 线性类型
+## 1.1 线性表
 类别 | 存储结构 | 随机访问复杂度 | 更新和删除复杂度
 --- | --- | --- | ---
 顺序表 | 顺序存储(扩容) | O(1) | O(n)
 链表 | 链表存储(存储方便) | O(n) | O(1)
 
-### 1.2.1 对一个链表实现逆序排序
+### 1.1.1 对一个链表实现逆序排序
 1. 迭代的实现
 ```java
 public Node reverseIteractive(Node head){
@@ -108,3 +91,36 @@ public Node reverseIteractive(Node head){
         return curr;
     }
 ```
+
+### 1.1.2 删除链表的第k个节点的实现
+```java
+    public Integer getLastK(Node head, int k){
+        if(head == null){
+            return null;
+        }
+        Node fast = head;
+        Node slow = head;
+        //fast先走k步
+        while(--k > 0){
+            fast = fast.next;
+        }
+
+        Integer lastKval = null;
+        while(fast.next != null && slow.next != null){
+            Node nextFastNode = fast.next;
+            //|start----k----last|，其中fast先跑了k步，当fast到达末尾的时候,即slow到达倒数k节点的时候
+            if(nextFastNode.next == null){
+                //保留下last K的值
+                lastKval = slow.next.value;
+                //跳过即删除链表的last K节点
+                Node next = slow.next.next;
+                slow.setNext(next);
+            }
+            //fast slow通过next传递，迭代指针向后移动
+            slow = slow.next;
+            fast = nextFastNode;
+        }
+        return lastKval;
+    }
+```
+
