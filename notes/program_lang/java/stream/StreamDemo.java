@@ -1,4 +1,4 @@
-package notes.program_basic.stream;
+package notes.program_lang.java.stream;
 
 import java.util.Arrays;
 import java.util.List;

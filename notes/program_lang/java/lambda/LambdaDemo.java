@@ -1,4 +1,4 @@
-package notes.program_basic.lambda;
+package notes.program_lang.java.lambda;
 
 import java.util.ArrayList;
 import java.util.Arrays;

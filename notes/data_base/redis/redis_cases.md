@@ -72,4 +72,48 @@ public class DistributedLock {
 }
 ```
 
-### 3. 案例
+### 3. 数据库查询案例
+- 使用Spring的相关注解，在操作数据库的时候，可以相应加入缓存的操作：
+类 | 动作
+org.springframework.cache.annotation.CacheEvict | 清除缓存
+org.springframework.cache.annotation.CachePut | 生成缓存
+org.springframework.cache.annotation.Cacheable | 没有的情况下，生成缓存；否则，读取缓存
+- 缓存的配置示例代码, 加入EnableCaching注解，override Redis 可以的生成方式。
+```java
+@Configuration
+@EnableCaching
+public class RedisConfig extends CachingConfigurerSupport{
+	
+	@Bean
+	public KeyGenerator keyGenerator() {
+        return new KeyGenerator() {
+            @Override
+            public Object generate(Object target, Method method, Object... params) {
+                StringBuilder sb = new StringBuilder();
+                sb.append(target.getClass().getName());
+                sb.append(method.getName());
+                for (Object obj : params) {
+                    sb.append(obj.toString());
+                }
+                return sb.toString();
+            }
+        };
+    }
+}
+```
+- TODO
+
+### 5. HTTP session ID缓存案例
+- POM 引入spring-session-data-redis
+- 增加session的配置类
+```java
+package com.neo.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.session.data.redis.config.annotation.web.http.EnableRedisHttpSession;
+
+@Configuration
+@EnableRedisHttpSession(maxInactiveIntervalInSeconds = 86400*30)
+public class SessionConfig {
+}
+```

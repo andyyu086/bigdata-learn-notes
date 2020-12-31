@@ -1,5 +1,9 @@
 1. 下载安装：
+MAC环境：
 https://www.cnblogs.com/nickchen121/p/11145123.html
+Linux环境：
+https://www.jianshu.com/p/276d59cbc529
+
 
 2. 创建数据库：
 > mysql> create database tb_base;
