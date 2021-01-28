@@ -283,3 +283,10 @@ a deserialized Java object representation and a serialized binary representation
 In general, Spark uses the deserialized representation for records in memory and the serialized representation for records stored on disk or being transferred over the network. 
 There is work planned to store some in-memory shuffle data in serialized form.
 The spark.serializer property controls the serializer that’s used to convert between these two representations. The Kryo serializer, org.apache.spark.serializer.KryoSerializer, is the preferred option.
+
+## 数据倾斜
+http://www.jasongj.com/spark/skew/
+- 数据源测倾斜，调整数据源可split，同时保证输入数据源分区数据量尽可能平均；增加shuffle的并发度，和自定义bykey的partitionor使得task输入数据量尽可能分散；
+- 对于join 一个dataset比较小的话 缓存到boardcast，将reduce side join改为map side join;spark sql使用cache table等；
+- 对于聚合操作导致倾斜场景，对于倾斜的key，加入随机前缀；分别进行聚合操作后再union；对于倾斜key比较平均的情况下，另外的表进行笛卡尔积的join后处理。
+

@@ -70,5 +70,3 @@ export JMX_PORT=9988
 
 
 
-
-
