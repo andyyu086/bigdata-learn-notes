@@ -161,23 +161,5 @@ class OrderPaySelect() extends PatternSelectFunction[OrderEvent,OrderResult]{
 }
 ```
 
-## Stream Join的代码例子
-```scala
-    val processStream = orderEventStream.intervalJoin(receiptEventStream)
-      .between(Time.seconds(-5),Time.seconds(5))
-      .process(new TxPayMatchByJoin())
-
-    processStream.print()
-
-    env.execute("tx pay match by join job")
-```
-```scala
-class TxPayMatchByJoin() extends ProcessJoinFunction[OrderEvent, ReceiptEvent, (OrderEvent, ReceiptEvent)]{
-  override def processElement(in1: OrderEvent, in2: ReceiptEvent, context: ProcessJoinFunction[OrderEvent, ReceiptEvent, (OrderEvent, ReceiptEvent)]#Context, collector: Collector[(OrderEvent, ReceiptEvent)]): Unit = {
-    collector.collect((in1, in2))
-  }
-}
-```
-
 
 

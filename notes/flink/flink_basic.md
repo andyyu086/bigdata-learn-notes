@@ -735,7 +735,6 @@ MemoryStateBackend (默认)
 FsStateBackend
 RocksDBStateBackend (DB 2^31的大小容量限制)
 - 配置到HDFS的的样例:
-
 ```scala
 val env = StreamExecutionEnvironment.getExecutionEnvironment()
 env.setStateBackend(new FsStateBackend("hdfs://namenode:40010/flink/checkpoints"))
@@ -898,3 +897,39 @@ GenericWriteAheadSink模版会收集检查点之前的所有的数据，并将�
   - 2PC exactly once
 TwoPhaseCommitSinkFunction模版利用了外部系统的事务特性。
 对于每一个检查点，任务首先开始一个新的事务，并将接下来所有的数据都写到外部系统的当前事务上下文中去。当任务接收到检查点完成的通知时，sink连接器将会commit这个事务。
+
+### 并发度设置
+- 参考官网
+![A parallel dataflow](https://ci.apache.org/projects/flink/flink-docs-release-1.9/fig/parallel_dataflow.svg)
+
+### 反压
+https://zhuanlan.zhihu.com/p/92743373
+
+### PMC
+http://wuchong.me/blog/2019/02/12/how-to-become-apache-committer/#more
+
+### Check Point - 二阶段提交机制
+Flink的分布式快照的核心是其轻量级异步分布式快照机制。
+为了实现这一机制，flink引入了一个概念，叫做Barrier。Barrier是一种标记，它被source产生并且插入到流数据中，被发送到下游节点。
+当下游节点处理到该barrier标志时，这就意味着在该barrier插入到流数据时，已经进入系统的数据在当前节点已经被处理完毕。 
+如图所示，每当一个barrier流过一个算子节点时，就说明了在该算子上，可以触发一次检查点，用以保存当前节点的状态和已经处理过的数据，这就是一份快照。
+（在这里可以联想一下micro-batch，把barrier想象成分割每个batch的逻辑，会好理解一点）这样的方式下，记录快照就像和前面提到的micro-batch一样容易。
+
+与此同时，该算子会向下游发送该barrier。因为数据在算子之间是按顺序发送的，所以当下游节点收到该barrier时，也就意味着同样的一批数据在下游节点上也处理完毕，可以进行一次checkpoint，保存基于该节点的一份快照，快照完成后，会通知JobMananger自己完成了这个快照。
+这就是分布式快照的基本含义。
+有时，有的算子的上游节点和下游节点都不止一个，应该怎么处理呢？如果有不止一个下游节点，就向每个下游发送barrier。同理，如果有不止一个上游节点，那么就要等到所有上游节点的同一批次的barrier到达之后，才能触发checkpoint。因为每个节点运算速度不同，所以有的上游节点可能已经在发下个barrier周期的数据了，有的上游节点还没发送本次的barrier，
+这时候，当前算子就要缓存一下提前到来的数据，等比较慢的上游节点发送barrier之后，才能处理下一批数据。
+当整个程序的最后一个算子sink都收到了这个barrier，也就意味着这个barrier和上个barrier之间所夹杂的这批元素已经全部落袋为安。
+这时，最后一个算子通知JobManager整个流程已经完成，而JobManager随后发出通知，要求所有算子删除本次快照内容，以完成清理。
+这整个部分，就是Flink的两阶段提交的checkpoint过程。
+
+
+
+
+
+
+
+
+
+
+

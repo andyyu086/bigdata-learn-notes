@@ -12,14 +12,14 @@
 - 但是在分区再平衡的时候，新的消费者需要知道之前的消费者消费的位置，从而继续开始消费；
 - 如果实际最后消费的位置和记录的偏移量不一致的话，就会导致重复消费或者漏消费的问题。
 
-## offset管理
+### offset管理
 手动提交offset
 https://www.jianshu.com/p/d2a61be73513
 
 ## 消费者设置
 https://github.com/heibaiying/BigData-Notes/blob/master/notes/Kafka消费者详解.md
 
-## offset手动提交
+### offset手动提交
 ```scala
     //2.使用KafkaUtil连接Kafak获取数据
     val recordDStream: InputDStream[ConsumerRecord[String, String]] = KafkaUtils.createDirectStream[String, String](ssc,

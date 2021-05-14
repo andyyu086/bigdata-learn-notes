@@ -286,7 +286,141 @@ The spark.serializer property controls the serializer that’s used to convert b
 
 ## 数据倾斜
 http://www.jasongj.com/spark/skew/
-- 数据源测倾斜，调整数据源可split，同时保证输入数据源分区数据量尽可能平均；增加shuffle的并发度，和自定义bykey的partitionor使得task输入数据量尽可能分散；
+- 数据源测倾斜，调整数据源可split，同时保证输入数据源分区数据量尽可能平均；
+- 增加shuffle的并发度，和自定义bykey的partitionor使得task输入数据量尽可能分散；
 - 对于join 一个dataset比较小的话 缓存到boardcast，将reduce side join改为map side join;spark sql使用cache table等；
-- 对于聚合操作导致倾斜场景，对于倾斜的key，加入随机前缀；分别进行聚合操作后再union；对于倾斜key比较平均的情况下，另外的表进行笛卡尔积的join后处理。
+- 对于聚合操作导致倾斜场景，对于倾斜的key，加入随机前缀；分别进行聚合操作后再union；
+- 对于倾斜key比较平均的情况下，另外的表进行笛卡尔积的join后处理。
+
+### 算子调优
+- 使用mapPartitions代替大部分map操作，多次map的时候，避免产生多个重复对象，加大GC的压力；
+- 单task数据太大导致OOM的时候，使用repartition降低每个task的处理的数据量；
+- 充分利用String在常量池的特性，对于大量重复数据的场景，常量池可以大大降低数据量；
+
+### 存储参数调整
+- 数据本地化: spark.locality.wait (default 3s)：
+对于spark中有4中本地化执行level: PROCESS_LOCAL->NODE_LOCAL->RACK_LOCAL->ANY,该参数表示等待各个等级ready的切换间隔；
+如果分区数据比较多，每个分区处理时间过长，就应该把 spark.locality.wait 适当调大一点，让Task能够有更多的时间等待本地数据ready。
+特别是在使用persist或者cache后，在本地机器调用内存中保存的数据效率会很高，需要适当提高该参数；
+否则，过低会导致需要跨机器传输内存中的数据，效率就会很低。
+
+### Join
+1. 三张类型的join
+- 存在小表<10MB,使用broadcast hash join; 将小表的数据全部存储到map内存中；
+- 没有很小的表，但是存在一张较小表，使用shuffle hash join；根据key 做hash，然后再hash后的分区在一个节点内，做配合联合读取；
+- 两张都是很大的大表，使用sort merge join；shuffle之后，在节点内做sort后，进行merge合并后匹配；
+由于spark在shuffle时就会sort，所以可以利用这部分性能。
+
+2. join中大小表的选择
+确定Build Table以及Probe Table：
+Build Table会被构建成以join key为key的hash table，
+而Probe Table使用join key在这张hash table表中寻找符合条件的行，然后进行join链接。
+通常情况下，小表会被作为Build Table，较大的表会被作为Probe Table。
+
+3. Sort Merge Join
+这种方式不用将一侧数据全部加载后再进行hash join，但需要在join前将数据进行排序。
+过程分为三个步骤：
+- shuffle阶段：将两张大表根据join key进行重新分区，两张表数据会分布到整个集群，以便分布式并行处理
+- sort阶段：对单个分区节点的两表数据，分别进行排序
+- merge阶段：对排好序的两张分区表数据执行join操作。
+join操作很简单，分别遍历两个有序序列，碰到相同join key就merge输出，否则继续取更小一边的key。
+
+4. 性能比较
+几种join的代价关系：cost(Broadcast Hash Join)< cost(Shuffle Hash Join) < cost(Sort Merge Join)，
+数据仓库设计时最好避免大表与大表的join查询，
+SparkSQL也可以根据内存资源、带宽资源适量将参数spark.sql.autoBroadcastJoinThreshold调大，让更多join实际执行为Broadcast Hash Join。
+
+### Shuffle
+1. Shuffle write分为：
+- 不进行预聚合的 BypassMergeSortShuffleWriter:BypassMergeSortShuffleHandle，
+- 不预聚合，但进行序列化存储的 UnsafeShuffleWriter: SerializedShuffleHandle
+- 进行预聚合的 SortShuffleWriter:BaseShuffleHandle
+
+2. 基本过程
+map端负责对数据进行重新分区(Shuffle Write)，可能有排序操作；
+而reduce端拉取数据各个mapper对应分区的数据(Shuffle Read)，然后对这些数据进行计算。
+读取过程中也有多个参数可以调整，比如说重试次数，缓存大小等；
+Shuffle过程中伴随着大量的数据传输。
+
+
+### 一个优化示例
+https://mp.weixin.qq.com/s?__biz=MzU3MzgwNTU2Mg==&mid=2247486322&idx=2&sn=00ddcd16109249e45a70233d5ef959ba&chksm=fd3d4de7ca4ac4f15f85d9a2873c5d1070af3bb929479bd66f7a0dc89ac0777b6960cbce5970&token=1999457569&lang=zh_CN#rd
+
+1. 首先，对于多次或者复杂计算得到的RDD，进行checkpoint缓存操作；
+2. 如果直接缓存在内存，耗费内存太大；考虑使用使用MEMORY_ONLY_SER，可以在可控消耗CPU资源的情况，显著降低内存消耗；
+3. 数据类型优化，对于字符串类型的数据，如果实际就是整型的话，可以转换为Long等数字型，这样可以显著降低内存占用，以及计算性能；
+4. 数据倾斜问题，找出倾斜的key，对倾斜的部分key进行加随机数，或者先预算对应的key，然后进行map join；最后再和不倾斜的key的结果进行union；
+5. 此外，监控GC的使用的情况，如果大对象较多的话，适当加大老年代的内存大小；
+6. 对于groupbykey操作，底层使用array进行数据存储，可能导致连续内存段不足，从而导致OOM，可以加大shuffle并发度，同时降低单key的reduce的数据量。
+
+
+### 再谈内存管理
+1. 堆内内存: 包括3个部分:部分预留内存(384MB),元数据存储(40%)和统一可用内存(60%)；
+可用存储再分为storage存储内存(60% * 50%)和execution执行(60% * 50%)内存，
+通过spark.storage.storageFraction，两者动态可调整大小。
+
+2. 堆外内存: 为了加快shuffle读取内存的效率，通过java unsafe API 直接读取序列化好的堆外内存信息；
+也分为分为storag内存(50%)和execution(50%)
+通过配置 spark.memory.offHeap.enabled 参数启用，
+并由 spark.memory.offHeap.size 参数设定堆外空间的大小.
+
+#### 存储内存
+1. RDD持久化
+- RDD 是只读的一个数据分区集合；task启动读取分区时，判断RDD是否已缓存，
+没有的话，确认checkpoint，或者通过血缘关系查找最终的数据源进行读取；
+- 如果一个RDD被多次执行Action，需要尽量将其缓存起来，以避免多次溯源读取；
+cache()方法相当于MEMORY_ONLY的persist。
+- 持久化可以根据存储介质，是否序列化，备份块数；三个维度来定义等级。
+
+2. RDD缓存过程
+迭代获取等
+
+3. 淘汰和落盘
+内存不足时，根据RDD间关系，判断淘汰内存，最后基于LRU算法来操作；
+落盘时，根据具体介质，执行序列化和反序列化操作。
+
+#### 执行内存
+1. 任务间内存
+一个executor内的多个task，共享同一份executor的执行内存，默认单task分配为1/2N~1/N的执行内存；
+N为executor内启动的task数量。
+
+2. shuffle内存
+Shuffle的Write和 ead两阶段对执行内存的使用：
+- Shuffle Write
+若在 map 端选择普通的排序方式，会采用 ExternalSorter 进行外排，在内存中存储数据时主要占用堆内执行空间。
+若在 map 端选择 Tungsten 的排序方式，则采用 ShuffleExternalSorter 直接对以序列化形式存储的数据排序，
+在内存中存储数据时可以占用堆外或堆内执行空间，取决于用户是否开启了堆外内存以及堆外执行内存是否足够。
+- Shuffle Read
+在对 reduce 端的数据进行聚合时，要将数据交给 Aggregator 处理，在内存中存储数据时占用堆内执行空间。
+如果需要进行最终结果排序，则要将再次将数据交给 ExternalSorter 处理，占用堆内执行空间。
+
+
+### Kafka Offset
+1. 使用kafka的默认topic进行offset的存储
+- 如果保存结果保证幂等，可以做到exactly-once,否则是at least once;
+具体spark streaming封装的api示例:
+```java
+stream.foreachRDD { rdd =>
+  val offsetRanges = rdd.asInstanceOf[HasOffsetRanges].offsetRanges
+  // 确保结果都已经正确且幂等地输出了
+  stream.asInstanceOf[CanCommitOffsets].commitAsync(offsetRanges)
+}
+```
+2. 使用自定义提交offset
+- 如果存储结果保存在具备事务的数据库时，可以让offset的提交和sink的结果在同一个事务内提交；
+从而保证exactly once.
+- 在转换过程中不能破坏RDD分区与Kafka分区之间的映射关系。亦即像map()/mapPartitions()这样的算子是安全的，
+而会引起shuffle或者repartition的算子，如reduceByKey()/join()/coalesce()等等都是不安全的。
+
+### 谓词下推
+http://hbasefly.com/2017/04/10/bigdata-join-2/?icpyvw=0szvl3&pgvopw=fch1l3
+
+### SQL解析
+http://hbasefly.com/2017/03/01/sparksql-catalyst/
+
+### 再谈JOIN的选择
+http://hbasefly.com/2017/03/19/sparksql-basic-join/
+
+### CBO详解
+http://hbasefly.com/2017/05/04/bigdata－cbo/?nqdchy=li20l3
 
