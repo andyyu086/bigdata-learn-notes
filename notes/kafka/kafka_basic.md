@@ -42,6 +42,11 @@ group.initial.rebalance.delay.ms=0
 sh /data/opt/kafka_2.11-2.1.1/bin/kafka-server-start.sh -daemon /data/opt/kafka_2.11-2.1.1/config/server.properties 
 ```
 
+### 关闭
+Kafka关闭命令(备注：先进入kafka目录)
+
+bin/kafka-server-stop.sh
+
 ### Topic操作
 - 查看所有topic
 ```

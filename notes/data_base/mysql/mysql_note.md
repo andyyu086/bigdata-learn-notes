@@ -168,3 +168,35 @@ mysql> show index from tb_user;
 10. SQL函数参考
 [参考](https://www.runoob.com/mysql/mysql-functions.html)
 
+11. 问题解决收集
+- 建表和索引，遇到问题"Specified key was too long; max key length is 767 bytes"
+
+```sql
+mysql> SHOW variables like 'innodb_large_prefix'
+    -> ;
++---------------------+-------+
+| Variable_name       | Value |
++---------------------+-------+
+| innodb_large_prefix | OFF   |
++---------------------+-------+
+1 row in set (0.00 sec)
+
+mysql> SET GLOBAL INNODB_LARGE_PREFIX = ON;
+Query OK, 0 rows affected (0.00 sec)
+
+mysql> SHOW variables like 'innodb_file_format';
++--------------------+----------+
+| Variable_name      | Value    |
++--------------------+----------+
+| innodb_file_format | Antelope |
++--------------------+----------+
+1 row in set (0.00 sec)
+
+mysql> SET GLOBAL innodb_file_format = BARRACUDA;
+Query OK, 0 rows affected (0.01 sec)
+
+mysql> exit;
+
+```
+此外，对应报错表的建表语句加“ROW_FORMAT = Dynamic”
+
