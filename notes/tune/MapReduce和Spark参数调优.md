@@ -102,3 +102,6 @@ spark.sql.optimizer.sizeBasedJoinReorder.enabled |
 ### 2.4 Spark 内存配置
 ![image](https://d2908q01vomqb2.cloudfront.net/b6692ea5df920cad691c20319a6fffd7a4a766b8/2019/04/02/SparAppsonEMR1.png)
 
+### 2.5 Spark executor相关调优
+https://www.jianshu.com/p/3716ade93b02
+
